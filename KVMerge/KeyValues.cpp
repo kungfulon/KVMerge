@@ -1,4 +1,5 @@
 #include <fstream>
+#include <codecvt>
 #include "KeyValues.h"
 
 KeyValues::KeyValues(const wchar_t *sKeyName, const wchar_t *sValue) :
@@ -53,7 +54,7 @@ void KeyValues::SetNext(KeyValues *pNext) {
 bool KeyValues::SaveToFile(const wchar_t *sFileName) {
   std::ofstream f(sFileName, std::ofstream::binary);
 
-  if (f.bad()) {
+  if (!f.good()) {
     return false;
   }
 
@@ -98,9 +99,9 @@ bool KeyValues::SaveToFile(const wchar_t *sFileName) {
 }
 
 KeyValues *KeyValues::LoadFromFile(const wchar_t *sFileName) {
-  std::ifstream f(sFileName, std::ifstream::binary);
+  std::wifstream f(sFileName, std::wifstream::binary);
 
-  if (f.bad()) {
+  if (!f.good()) {
     return NULL;
   }
 
@@ -112,10 +113,22 @@ KeyValues *KeyValues::LoadFromFile(const wchar_t *sFileName) {
   bool isEscaped = false;
   bool isCheckingComment = false;
   bool isComment = false;
+  bool isUCS2 = (f.get() == 0xFF && f.get() == 0xFE);
+
+  if (isUCS2) {
+    f.imbue(std::locale(f.getloc(), new std::codecvt_utf16<wchar_t, 0x10FFFF, std::little_endian>));
+  } else {
+    f.imbue(std::locale(f.getloc(), new std::codecvt_utf8<wchar_t, 0x10FFFF, std::little_endian>));
+  }
+
+  f.seekg(0, f.beg);
 
   while (!f.eof()) {
-    wchar_t ch;
-    f.read((char *)&ch, sizeof(wchar_t));
+    wchar_t ch = f.get();
+    
+    if (isUCS2 && ch == 0xFFFFu) {
+      break;
+    }
 
     if (!isInToken && iswspace(ch)) {
       if (ch == '\n') {
